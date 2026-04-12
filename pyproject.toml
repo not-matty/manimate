@@ -15,7 +15,9 @@ dependencies = [
     "opencv-python",
     "Pillow",
     "numpy",
-    "pyyaml",
+    "hydra-core>=1.3",
+    "omegaconf>=2.3",
+    "einops",
     "wandb",
     "matplotlib",
     "tqdm",
@@ -48,3 +50,5 @@ select = ["E", "F", "W", "I"]
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"

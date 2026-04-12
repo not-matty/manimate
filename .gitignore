@@ -21,6 +21,14 @@ results/
 # Output
 output/
 
+# MoG-VFI vendor checkpoints and outputs
+vendor/MoG-VFI/checkpoints/
+vendor/MoG-VFI/emavfi/ckpt/
+vendor/MoG-VFI/results/
+
+# Hydra
+outputs/
+
 # OS
 .DS_Store
 

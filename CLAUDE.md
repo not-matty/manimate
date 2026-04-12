@@ -27,11 +27,12 @@ Both modes share the same LoRA style backbone and interpolation pipeline. See `R
 ## Commands
 
 ```bash
+# Mode A — Keyframe interpolation (Hydra config)
+python scripts/interpolate.py keyframes=path/to/keyframes/ output=output/result.mp4
+python scripts/interpolate.py keyframes=path/to/keyframes/ output=output/result.mp4 ddim_steps=25 half_precision=false
+
 # LoRA training
 python train_lora.py --config configs/lora/default.yaml --data_dir data/manga_panels/
-
-# Mode A — Keyframe interpolation
-python interpolate.py --keyframes path/to/keyframes/ --output output/ --lora models/loras/series.safetensors
 
 # Mode B — Rotoscope from video
 python rotoscope.py --video path/to/reference.mp4 --lora models/loras/series.safetensors --output output/
@@ -87,7 +88,10 @@ manimate/
 
 ### Config Management
 - Standalone YAML files in `configs/`, one per experiment or model configuration
-- Load with `yaml.safe_load`, no Hydra
+- Load with **Hydra** (`@hydra.main` for CLI entry points, `hydra.compose` for programmatic use)
+- Use `OmegaConf.to_container(cfg, resolve=True)` when passing config to model wrappers that expect plain dicts
+- CLI overrides via Hydra syntax: `python scripts/interpolate.py ddim_steps=25 half_precision=false`
+- Required run-time fields use `???` (Hydra MISSING) — Hydra validates before execution
 - Every experiment gets a unique config — never overwrite old configs
 
 ### Model Wrappers

@@ -1,24 +1,39 @@
-# Default interpolation config
+# MoG interpolation config
 
-# Model
-model: rife  # Options: rife, film, amt
-model_path: models/interpolation/
+# Run parameters (override per run)
+keyframes: ???          # Required: path to keyframe directory
+output: ???             # Required: output path (video file or frame directory)
+prompt: ""
+save_frames: false
 
-# Interpolation
-target_fps: 24
-# Number of intermediate frames to generate between each keyframe pair.
-# Set to null to auto-calculate from target_fps and keyframe timing.
-num_intermediate_frames: null
+# Model selection
+model: mog
 
-# Per-layer interpolation
-per_layer: false  # If true, interpolate character and background layers separately
+# MoG model paths
+mog:
+  ckpt_path: vendor/MoG-VFI/checkpoints/ani.ckpt
+  config_path: vendor/MoG-VFI/configs/ani.yaml
+  vfi_ckpt_dir: vendor/MoG-VFI/emavfi/ckpt/
 
-# Diffusion fallback (for large motion gaps)
-use_diffusion_fallback: false
-diffusion_threshold: 0.7  # Motion magnitude threshold to trigger fallback
-lora_path: null  # Path to style LoRA for diffusion fallback
+# Inference settings
+height: 320
+width: 512
+video_length: 16         # MoG generates 16 frames per pair (14 intermediate)
+ddim_steps: 50
+ddim_eta: 1.0
+guidance_scale: 7.5
+guidance_rescale: 0.7
+frame_stride: 24
+timestep_spacing: uniform_trailing
+half_precision: true      # Set true for 8GB GPUs
 
 # Output
-output_format: png  # png or jpg
-output_dir: output/
+target_fps: 24
+output_format: png
 seed: 42
+
+# Hydra — disable automatic output directory
+hydra:
+  output_subdir: null
+  run:
+    dir: .
