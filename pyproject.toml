@@ -1,0 +1,50 @@
+[project]
+name = "manimate"
+version = "0.1.0"
+description = "AI-assisted manga-to-animation tool"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torchvision",
+    "diffusers>=0.25",
+    "transformers",
+    "accelerate",
+    "peft",
+    "safetensors",
+    "controlnet-aux",
+    "opencv-python",
+    "Pillow",
+    "numpy",
+    "pyyaml",
+    "wandb",
+    "matplotlib",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pyright",
+    "pytest",
+]
+ui = [
+    "PySide6",
+]
+
+[tool.setuptools.packages.find]
+include = ["manimate*"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"

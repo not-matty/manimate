@@ -1,0 +1,36 @@
+# Default LoRA training config
+# Train a style LoRA on manga panels from a specific series
+
+# Data
+data_dir: data/manga_panels/
+resolution: 512
+center_crop: true
+random_flip: false
+
+# Model
+base_model: stabilityai/stable-diffusion-xl-base-1.0
+lora_rank: 32
+lora_alpha: 32
+lora_target_modules:
+  - to_q
+  - to_k
+  - to_v
+  - to_out.0
+
+# Training
+learning_rate: 1.0e-4
+train_batch_size: 1
+gradient_accumulation_steps: 4
+max_train_steps: 1000
+lr_scheduler: cosine
+lr_warmup_steps: 100
+mixed_precision: fp16
+seed: 42
+
+# Output
+output_dir: models/loras/
+save_every_n_steps: 250
+
+# W&B
+wandb_project: manimate
+wandb_run_name: lora-default

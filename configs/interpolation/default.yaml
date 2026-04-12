@@ -1,0 +1,24 @@
+# Default interpolation config
+
+# Model
+model: rife  # Options: rife, film, amt
+model_path: models/interpolation/
+
+# Interpolation
+target_fps: 24
+# Number of intermediate frames to generate between each keyframe pair.
+# Set to null to auto-calculate from target_fps and keyframe timing.
+num_intermediate_frames: null
+
+# Per-layer interpolation
+per_layer: false  # If true, interpolate character and background layers separately
+
+# Diffusion fallback (for large motion gaps)
+use_diffusion_fallback: false
+diffusion_threshold: 0.7  # Motion magnitude threshold to trigger fallback
+lora_path: null  # Path to style LoRA for diffusion fallback
+
+# Output
+output_format: png  # png or jpg
+output_dir: output/
+seed: 42

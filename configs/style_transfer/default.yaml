@@ -1,0 +1,28 @@
+# Default style transfer config (Mode B — rotoscope)
+
+# Model
+base_model: stabilityai/stable-diffusion-xl-base-1.0
+controlnet_model: controlnet-openpose  # Pose conditioning from reference video
+lora_path: null  # Path to manga style LoRA (required)
+
+# Style transfer
+strength: 0.75  # Denoising strength (higher = more stylization, less pose fidelity)
+guidance_scale: 7.5
+num_inference_steps: 30
+seed: 42
+
+# Pose estimation
+pose_model: dwpose  # Options: dwpose, openpose, mediapipe
+
+# Character conditioning
+character_ref_path: null  # Optional path to character reference sheet
+
+# Keyframe extraction from video
+extract_every_n_frames: 6  # Extract a keyframe every N frames from source video
+# Or set to null and provide manual frame numbers:
+manual_frame_numbers: null
+
+# Output
+resolution: 512
+output_dir: output/
+output_format: png

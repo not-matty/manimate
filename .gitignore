@@ -1,0 +1,29 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Models and data (large files)
+models/
+data/
+checkpoints/
+
+# Results (regenerable)
+results/
+
+# Output
+output/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
