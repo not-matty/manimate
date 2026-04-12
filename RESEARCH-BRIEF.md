@@ -39,13 +39,23 @@ Both modes use a LoRA fine-tuned on the source manga to enforce art style consis
 Animator draws keyframes (every Nth frame)
     │
     │   Can be: clean art, rough sketches, or anything in between.
-    │   Style doesn't need to be perfect — LoRA will enforce it.
+    │   Style doesn't need to be perfect — the cleanup step will enforce it.
     │   N varies: fast action → every 2-4 frames, slow movement → every 8-12+
+    │
+    ▼
+Sketch-to-Clean Keyframe (LoRA + ControlNet)
+    │
+    │   For each rough keyframe:
+    │   1. Reference image (manga panel) provides style/character target
+    │   2. Rough sketch provides pose and composition via ControlNet
+    │   3. img2img generation (LoRA-guided) outputs a clean, on-style keyframe
+    │   4. Animator reviews and optionally corrects the cleaned keyframe
+    │   Optional — animators drawing clean final art can skip this step.
     │
     ▼
 AI Interpolation (LoRA-guided)
     │
-    │   For each pair of adjacent keyframes (A, B):
+    │   For each pair of adjacent clean keyframes (A, B):
     │   1. Estimate motion between A and B
     │   2. Generate N-1 intermediate frames
     │   3. LoRA enforces manga art style on all generated frames
@@ -92,7 +102,7 @@ The tool should default to frame interpolation and fall back to diffusion-based 
 
 - For frame interpolation (RIFE/FILM): LoRA isn't directly involved — style comes from the keyframes. But a LoRA-guided **post-processing pass** can clean up any style drift in the blended frames.
 - For diffusion-based interpolation: LoRA directly guides generation, ensuring every frame matches the manga's line weight, shading, proportions, and color palette.
-- For rough keyframe cleanup: If the animator's keyframes are sketchy/rough, a LoRA-guided img2img pass can clean them into on-style art before interpolation runs. This is optional — animators drawing clean art can skip it.
+- For sketch-to-clean keyframe: Rough sketches are transformed into on-style keyframes via img2img conditioned on a reference manga panel (style/character target) + ControlNet (pose from the sketch) + LoRA (art style). This is the primary input path for animators who draw rough — clean art animators skip this step.
 
 ## 4. Mode B — AI Rotoscope
 
@@ -271,7 +281,7 @@ AI will make mistakes. The cleanup tools need to make fixing them fast enough th
 | exp-005 | Keyframe density ablation: every 2nd, 4th, 6th, 8th, 12th frame. Where does quality fall off? |
 | exp-006 | Diffusion-based interpolation vs frame interpolation on hard cases (large motion, rotation). |
 | exp-007 | LoRA post-processing pass on interpolated frames: does it improve style consistency? |
-| exp-008 | Rough keyframe cleanup: how rough can the input be before AI cleanup fails? |
+| exp-008 | Sketch-to-clean keyframe: reference panel + rough sketch + LoRA + ControlNet → clean keyframe. Evaluate style accuracy and pose preservation at varying sketch roughness levels. |
 
 ### Mode B — AI Rotoscope
 | Experiment | Description |
@@ -300,11 +310,13 @@ AI will make mistakes. The cleanup tools need to make fixing them fast enough th
 
 5. **Cleanup overhead** — If correction takes as long as drawing from scratch, the tool has no value. Mitigation: Focus on the "add keyframe" fix (most reliable, avoids AI re-generation); benchmark time savings early (exp-015).
 
+6. **Foreground segmentation on B&W manga** — Tested `rembg` with `isnet-anime` for layer decomposition (separate character from background, interpolate independently, composite). Results: model fails on B&W manga panels. Coverage was 13.5% on one panel (nearly nothing detected, character layer entirely gray) vs 45.4% on the other. The model was trained on color anime, not raw manga — low contrast between character linework and background defeats it. Layer decomposition will need a different approach: manga-specific segmentation model, SAM2 with prompted points, or manual mask painting. See `output/layer_test_remote/inputs/` for test artifacts.
+
 ## 10. Future Work (from the full pipeline brief)
 
 Once the MVP works, these can be added incrementally:
 - Manga panel parsing and reading order
-- Layer decomposition for parallax/camera movement
+- Layer decomposition for parallax/camera movement (note: `isnet-anime` segmentation fails on B&W manga — needs manga-specific model or SAM2, see Risk #6)
 - Timesheet / X-sheet timing system
 - Sakkan (animation director) AI correction
 - Color design and automated coloring pipeline

@@ -137,6 +137,36 @@ assert config.fps > 0, f"FPS must be positive, got {config.fps}"
 assert config.keyframe_interval >= 1, f"Keyframe interval must be >= 1, got {config.keyframe_interval}"
 ```
 
+## MoG-VFI Setup
+
+The interpolation engine lives in `vendor/MoG-VFI` (git submodule). Key operational details:
+
+- **Weights** (~10GB total): `ani.ckpt` from HuggingFace `MCG-NJU/MoG`, `ours_t.pkl` (EMA-VFI) from Google Drive. Download with `python scripts/download_models.py`.
+- **CWD hack**: EMA-VFI loads weights relative to CWD. `MoGInterpolator.load()` does `os.chdir(VENDOR_DIR)` temporarily. Must run on main thread.
+- **Monkey-patch**: EMA-VFI's `Model.device()` forces CUDA during init. We patch it to no-op so VFI stays on CPU until we're ready. See `mog.py:82-89`.
+- **Output**: Always 14 intermediate frames per pair at 320×512. Not configurable — subsample if you need fewer.
+- **Aspect-preserving crop**: Input frames use cover-crop (scale so both dims ≥ target, then center-crop), not resize+pad. See `_aspect_cover_crop`.
+
+## RunPod Setup
+
+```bash
+# On the pod:
+bash scripts/setup_runpod.sh    # deps, pre-flight checks
+python scripts/download_models.py
+```
+
+Gotchas that have burned time:
+
+- **Container disk ≥ 50GB** — 20GB default fails. Models + deps + workspace need room.
+- **SSH key injection**: Create pod with `env={"PUBLIC_KEY": <key>}`. The key must match the machine running SSH (`~/.ssh/id_*.pub`), not some other machine's key.
+- **Private repo auth**: `git clone https://x-access-token:${GH_TOKEN}@github.com/not-matty/animation.git`
+- **Torch pinning**: `setup_runpod.sh` pins torch to the container's pre-installed version. Never let a dep upgrade torch — it breaks CUDA/cuDNN.
+- **Version locks**: `numpy<2` (MoG deps break on 2.x), `transformers<4.40`, `xformers` must match container torch+CUDA.
+- **rembg**: Install with `pip install "rembg[gpu]"`, not `rembg` (needs onnxruntime-gpu).
+- **Unicode filenames**: Manga panel files may have Unicode non-breaking spaces (U+202F) in filenames. Use shell globs, not hardcoded names.
+- **VRAM staging**: Unload each model before loading the next (e.g., segmentation → `del model; torch.cuda.empty_cache()` → MoG). A single A6000 (48GB) can run them sequentially but not concurrently.
+- **Terminate pods when done** — they bill by the minute. Use `runpod.terminate_pod(pod_id)` or the web UI.
+
 ## Key Files
 
 | File | Purpose |

@@ -1,6 +1,6 @@
 # Manimate
 
-AI-assisted manga-to-animation tool. Draw every Nth frame, let AI fill in the rest — in the manga's own art style.
+A highly customizable manga to animation pipeline. 
 
 ## What It Does
 

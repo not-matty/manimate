@@ -1,0 +1,94 @@
+{
+  "verdict": "needs-attention",
+  "summary": "The pipeline has a confirmed resolution mismatch bug and zero-pads manga panels with black bars instead of aspect-preserving crop. Beyond that, the architecture is missing fundamental capabilities needed for production manga animation: no layer decomposition (character vs background must interpolate separately and recombine via masks), no VRAM staging (depth model and interpolation model cannot coexist — must load/unload sequentially), no variable per-pair frame counts or scene duration control, no structured input format for specifying pairs/groups/prompts, and no incremental saving. RunPod setup lacks disk space validation and should target 48GB VRAM. These range from a shipping correctness bug (F1) through critical architecture gaps (F4-F6, F8) to operational hazards (F2, F7).",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "critical",
+      "title": "Resolution mismatch + CenterCrop zero-pads instead of aspect-preserving crop",
+      "file": "manimate/interpolation/mog.py",
+      "line_start": 57,
+      "line_end": 64,
+      "body": "Two compounding issues in image preprocessing:\n\n1. ZERO-PADDING: mog.py:57-64 applies Resize(320) then CenterCrop(320, 512). For any input with aspect ratio narrower than 16:10 — which includes most manga panels (portrait or square) — CenterCrop pads with black to reach 512 width. MoG then interpolates 'through' the black bars, producing garbage at the padded edges. Visually confirmed: both test keyframes are roughly-square manga panels that would get heavy black bar padding.\n\nThe fix is aspect-preserving crop, not padding. Resize the image so the SHORT edge fills the target dimension, then center-crop the LONG edge to fit. For 320x512 target: resize so width >= 512 (or height >= 320), then crop to exactly 320x512. This preserves content and scale — no black bars, no stretching.\n\n2. RESOLUTION MISMATCH: pipeline.py:45,55 inserts original-resolution keyframes into the output alongside the 320x512 interpolated frames. When saved and assembled via ffmpeg, the mixed dimensions either crash ffmpeg or produce visible resolution jumps at every keyframe boundary.",
+      "confidence": 0.95,
+      "recommendation": "Replace the transform with aspect-preserving crop: Resize so the shorter target dimension is filled (i.e., resize such that width >= 512 AND height >= 320), then CenterCrop(320, 512). This cuts content at edges rather than padding with black. Apply the SAME transform to keyframes before inserting them into the pipeline output, and assert all output frames have identical dimensions."
+    },
+    {
+      "id": "F2",
+      "severity": "high",
+      "title": "No incremental saving — crash after pair N loses N x ~60s of GPU computation",
+      "file": "scripts/interpolate.py",
+      "line_start": 37,
+      "line_end": 56,
+      "body": "pipeline.run() (pipeline.py:45-59) accumulates every frame in a single in-memory list and only returns after all pairs complete. The CLI blocks on this call, then saves everything at once. Each MoG pair takes ~60s of GPU time.\n\nFor a 10-keyframe sequence (9 pairs, ~9 min GPU work), a CUDA OOM error, stochastic GPU fault, or process kill after pair 8 loses the entire ~8 minutes of completed results. There is no incremental save, no checkpoint, and no resume path.\n\nThis is especially likely given the hardware constraints: fp16 on an 8GB RTX 3070 (per config default half_precision: true) puts VRAM at the edge. MoG's inference allocates temporary tensors (noise_shape, VAE decode buffers) on top of the ~4-6GB model footprint. OOM on later pairs — after earlier pairs raised the CUDA memory high-water mark — is a realistic failure mode.",
+      "confidence": 0.90,
+      "recommendation": "Save each pair's interpolated frames to disk immediately after generation, before starting the next pair. The simplest fix: have the CLI call interpolator.interpolate() pair-by-pair in a loop, saving after each, instead of delegating to pipeline.run(). Alternatively, add an output_dir parameter to InterpolationPipeline.run() so it writes incrementally. Either way, the resume path is then trivial: skip pairs whose output files already exist."
+    },
+    {
+      "id": "F3",
+      "severity": "medium",
+      "title": "os.chdir() mutates process-global CWD during multi-second model loading",
+      "file": "manimate/interpolation/mog.py",
+      "line_start": 77,
+      "line_end": 113,
+      "body": "mog.py:78 calls os.chdir(VENDOR_DIR) to satisfy EMA-VFI's relative-path expectations for loading ours_t.ckpt. The finally block at line 113 restores the original CWD. The window spans the entire model loading phase: instantiate_from_config (line 91), load_model_checkpoint (line 100), fp16 conversion (lines 104-108), and CUDA transfer (lines 109-111). This can take 10-30+ seconds for large checkpoints.\n\nIn the single-threaded CLI this is safe. However, RESEARCH-BRIEF.md section 7 explicitly specifies a Qt/Dear ImGui desktop UI as a project deliverable. In any threaded context — UI event loop running file dialogs, autosave, or logging while model loading runs in a background thread — any code using relative paths (including Python's import machinery and logging formatters) resolves against vendor/MoG-VFI instead of the project root.",
+      "confidence": 0.75,
+      "recommendation": "For the CLI MVP, add a threading guard: assert threading.current_thread() is threading.main_thread() at the top of load(). For the UI integration, eliminate the chdir by patching EMA-VFI's path resolution or running model loading in a subprocess."
+    },
+    {
+      "id": "F4",
+      "severity": "high",
+      "title": "No layer decomposition — character and background must interpolate separately with masked recombination",
+      "file": "manimate/interpolation/pipeline.py",
+      "line_start": 8,
+      "line_end": 60,
+      "body": "The entire pipeline treats each frame as a single flat image. There is no concept of layers, masks, or per-layer interpolation.\n\nManga animation fundamentally separates characters from backgrounds. They have different motion characteristics (characters move/deform, backgrounds pan or stay static) and different quality requirements. Interpolating them together:\n\n1. Wastes GPU compute on static background regions that could be a single held frame or simple pan.\n2. Produces artifacts at character edges where the interpolator blends character and background motion together.\n3. Prevents compositing workflows where the background is a separate parallax layer.\n\nThe correct approach: accept per-frame masks (or generate them via depth/segmentation) that identify character vs background regions. Interpolate character layer separately (masked, with transparent/ignored background pixels). Interpolate background separately (or hold static). Recombine by compositing character over background using the masks.\n\nNeither BaseInterpolator.interpolate() (base.py:17-28) nor InterpolationPipeline.run() (pipeline.py:19-60) accept mask inputs. The pipeline has no recombination/compositing step.",
+      "confidence": 0.85,
+      "recommendation": "Add optional mask parameters to BaseInterpolator.interpolate() and InterpolationPipeline.run(). The pipeline should accept layer definitions (character, background) each with keyframes and masks. Add a compositing step that recombines layers. For mask generation, depth estimation (MiDaS/ZoeDepth) or segmentation (SAM) can extract layers from flat manga panels."
+    },
+    {
+      "id": "F5",
+      "severity": "high",
+      "title": "Fixed uniform frame count — no per-pair variable density or scene duration control",
+      "file": "manimate/interpolation/pipeline.py",
+      "line_start": 19,
+      "line_end": 23,
+      "body": "pipeline.py:22 accepts a single num_intermediate: int that applies uniformly to every keyframe pair. Real animation requires variable density:\n\n- Fast action (punch, explosion): 5-8 frames between keyframes for high temporal resolution.\n- Slow movement (head turn, dialogue): 2-3 frames between keyframes is sufficient.\n- An animator drawing keyframes will NOT space them uniformly — a 1-second scene might have K1 at 0.0s, K2 at 0.3s (fast), K3 at 1.0s (slow).\n\nThe pipeline also has no concept of scene duration. An animator should be able to say 'this scene is 2.5 seconds at 24fps = 60 frames' and have the system distribute frame counts across pairs proportionally (or per explicit specification).\n\nMoG always generates 14 intermediate frames, but mog.py:195-197 already has subsampling logic to produce fewer. The pipeline just doesn't expose per-pair control.",
+      "confidence": 0.90,
+      "recommendation": "Change num_intermediate from int to int | list[int]. When a list, each element specifies the frame count for that pair. Add a utility function to compute per-pair frame counts from scene_duration_seconds + target_fps + keyframe_timestamps. The Hydra config should accept frame_counts as a list or scene_duration as an alternative."
+    },
+    {
+      "id": "F6",
+      "severity": "medium",
+      "title": "Flat directory input — no structured specification of pairs, groups, per-pair metadata, or storyboard prompts",
+      "file": "scripts/interpolate.py",
+      "line_start": 17,
+      "line_end": 20,
+      "body": "The CLI takes keyframes=<dir>: a flat directory of images sorted lexicographically by filename. This is the only input mode. There is no way to specify:\n\n1. Which images form pairs or groups (assumes consecutive filename order = interpolation order).\n2. Per-pair frame counts (see F5).\n3. Per-pair text prompts (prompt= applies the same string to every pair).\n4. Per-pair masks or layer assignments (see F4).\n5. Keyframe timing/timestamps for scene duration control.\n\nFor a real animator workflow, a scene manifest (YAML) is needed:\n\n  keyframes:\n    - file: k1.png\n      time: 0.0\n      prompt: 'character turns head slowly'\n    - file: k2.png\n      time: 0.4\n      prompt: 'character reaches for door'\n      frames_to_next: 8\n    - file: k3.png\n      time: 1.0\n  layers: [character, background]\n  scene_duration: 1.0\n  fps: 24\n\nThis is also the extension point for storyboard-driven interpolation: each transition gets a descriptive prompt guiding how the diffusion model should interpolate (not just endpoint conditioning, but transition intent). Future interactive mode where the animator describes HOW each in-between should look.",
+      "confidence": 0.85,
+      "recommendation": "Add a manifest= Hydra config field alongside the existing keyframes= flat mode. The manifest is a YAML specifying keyframes with paths, timestamps, per-pair frame counts, per-pair prompts, and layer assignments. Flat directory mode becomes syntactic sugar. Use Hydra's config composition to let manifests inherit from a base interpolation config."
+    },
+    {
+      "id": "F7",
+      "severity": "medium",
+      "title": "RunPod setup has no disk space validation and no GPU size guidance — pod can fill mid-inference",
+      "file": "scripts/setup_runpod.sh",
+      "line_start": 1,
+      "line_end": 65,
+      "body": "setup_runpod.sh installs packages and verifies CUDA but never checks available disk space or VRAM. The script downloads and installs significant data:\n\n- pip packages: ~2-4GB\n- MoG checkpoints: ani.ckpt (~4GB) + ours_t.pkl (~300MB)\n- Inference output: frames + assembled video\n- Temporary CUDA/torch cache files\n\nRunPod containers typically have 20-50GB of usable disk. A multi-scene run can fill the disk, crashing mid-inference and losing both GPU time and RunPod credits.\n\nAdditionally, the script has no guidance on GPU selection. The pipeline needs to stage multiple models (depth separation + interpolation) which requires ~48GB VRAM for comfortable headroom. No pre-flight VRAM check or minimum GPU assertion exists.",
+      "confidence": 0.80,
+      "recommendation": "Add a disk space pre-flight check at the top of setup_runpod.sh: assert >= 30GB free disk. Add a VRAM check: assert >= 48GB VRAM (A6000 or A100). Also add disk space checks in download_models.py before each download. Print clear instructions to resize the RunPod volume or select a larger GPU template if insufficient."
+    },
+    {
+      "id": "F8",
+      "severity": "high",
+      "title": "No VRAM staging — pipeline cannot sequence model loading/unloading across stages",
+      "file": "manimate/interpolation/pipeline.py",
+      "line_start": 16,
+      "line_end": 17,
+      "body": "The full pipeline requires multiple large models that cannot coexist in VRAM simultaneously:\n\n1. Depth/segmentation model (MiDaS/ZoeDepth/SAM) for layer separation — ~2-6GB VRAM\n2. Interpolation model (MoG) — ~4-8GB VRAM\n3. (Future) Diffusion model for style-guided interpolation — ~6-12GB VRAM\n\nThe current InterpolationPipeline (pipeline.py:16-17) takes a single interpolator and has no concept of multi-stage model orchestration. There is no mechanism to:\n\n1. Run depth model to extract layers/masks\n2. Explicitly unload depth model (free VRAM via .unload())\n3. Load interpolation model into the freed VRAM\n4. Run per-layer interpolation\n5. Unload interpolation model\n6. Composite results\n\nWithout sequential staging, either: (a) all models must fit in VRAM simultaneously (requiring 80GB+ GPUs), or (b) models are loaded/unloaded ad-hoc with no guaranteed ordering, risking OOM.\n\nEven on a 48GB GPU (target spec), running depth + interpolation simultaneously would leave little headroom for inference tensors. Sequential staging is required.\n\nThe BaseInterpolator interface already has load()/unload() methods, but there is no orchestrator that sequences multiple model stages with explicit VRAM management between them.",
+      "confidence": 0.85,
+      "recommendation": "Create a top-level pipeline orchestrator (e.g., AnimationPipeline) that sequences stages: (1) load depth model → run layer separation → unload; (2) load interpolation model → run per-layer interpolation → unload; (3) composite layers. Each stage explicitly calls .unload() before the next calls .load(). Add a VRAM budget check: torch.cuda.mem_get_info() before each .load() to verify sufficient free VRAM. All model wrappers must implement clean .unload() that calls torch.cuda.empty_cache()."
+    }
+  ]
+}
