@@ -11,21 +11,22 @@ A manga-to-animation pipeline: sparse hand-drawn keyframes become smooth 24fps a
   <img src="assets/examples/input_b.png" width="320" alt="keyframe B">
 </p>
 
-<video src="assets/examples/result.mp4" controls width="640"></video>
+![MoG-VFI interpolation result](assets/examples/result.gif)
 
-[`result.mp4`](assets/examples/result.mp4) — flat (single-pass) MoG-VFI interpolation.
+([full-quality MP4](assets/examples/result.mp4))
 
-**Layer-separated composite** — character and background interpolated independently, then recomposited. Holds lines better through motion than flat interpolation when the background is largely static.
+**Flat baseline vs. layer-separated composite** — same keyframe pair, two pipelines. The composite interpolates character and inpainted background independently, then recomposites. Holds character lines better through motion when the background is largely static.
 
-<video src="assets/examples/composite.mp4" controls width="640"></video>
+| Flat (baseline) | Layer-separated composite |
+| --- | --- |
+| ![flat baseline](assets/examples/baseline.gif) | ![layer composite](assets/examples/composite.gif) |
+| [MP4](assets/examples/baseline.mp4) | [MP4](assets/examples/composite.mp4) |
 
-[`composite.mp4`](assets/examples/composite.mp4)
+**LTX single-pass baseline** — text-to-video in one shot, for comparison against the keyframe-guided approach.
 
-**LTX single-pass baseline** — text-to-video generation in one shot, for comparison against the keyframe-guided approach.
+![LTX single-pass](assets/examples/ltx_single_pass.gif)
 
-<video src="assets/examples/ltx_single_pass.mp4" controls width="640"></video>
-
-[`ltx_single_pass.mp4`](assets/examples/ltx_single_pass.mp4)
+([full-quality MP4](assets/examples/ltx_single_pass.mp4))
 
 ## Modes
 
