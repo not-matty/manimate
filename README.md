@@ -15,14 +15,14 @@ A manga-to-animation pipeline: sparse hand-drawn keyframes become smooth 24fps a
 
 ([full-quality MP4](assets/examples/result.mp4))
 
-**Flat baseline vs. layer-separated composite** — same keyframe pair, two pipelines. The composite interpolates character and inpainted background independently, then recomposites. Holds character lines better through motion when the background is largely static.
+**Flat baseline vs. layer-separated composite** — same keyframe pair, two pipelines. The composite interpolates character and inpainted background independently, then recomposites. Issue is that when background and characters interpolate independently, movement does not align correctly with current implementation.
 
 | Flat (baseline) | Layer-separated composite |
 | --- | --- |
 | ![flat baseline](assets/examples/baseline.gif) | ![layer composite](assets/examples/composite.gif) |
 | [MP4](assets/examples/baseline.mp4) | [MP4](assets/examples/composite.mp4) |
 
-**LTX single-pass baseline** — text-to-video in one shot, for comparison against the keyframe-guided approach.
+**LTX single-pass baseline** — LTX key-frame guided single pass.
 
 ![LTX single-pass](assets/examples/ltx_single_pass.gif)
 
