@@ -1,126 +1,77 @@
 # Manimate
 
-A highly customizable manga to animation pipeline. 
+A manga-to-animation pipeline: sparse hand-drawn keyframes become smooth 24fps animation via diffusion-based frame interpolation, backed by a LoRA trained on the source manga's art style.
 
-## What It Does
+## Examples
 
-**Mode A — Keyframe Interpolation**: Animators draw keyframes at variable spacing. AI generates the in-between frames using diffusion-based video interpolation (MoG-VFI), producing smooth 24fps animation from sparse hand-drawn art.
+**Keyframe pair → MoG-VFI interpolation (14 frames / pair @ 320×512)**
 
-**Mode B — AI Rotoscope** (planned): Feed in reference video. AI style-transfers each extracted keyframe into the manga's art style via ControlNet + LoRA, then interpolates between them using the same pipeline as Mode A.
+<p>
+  <img src="assets/examples/input_a.png" width="320" alt="keyframe A">
+  <img src="assets/examples/input_b.png" width="320" alt="keyframe B">
+</p>
 
-Both modes share a LoRA style backbone trained on the source manga's panels, ensuring every generated frame matches the original art style.
+<video src="assets/examples/result.mp4" controls width="640"></video>
+
+[`result.mp4`](assets/examples/result.mp4) — flat (single-pass) MoG-VFI interpolation.
+
+**Layer-separated composite** — character and background interpolated independently, then recomposited. Holds lines better through motion than flat interpolation when the background is largely static.
+
+<video src="assets/examples/composite.mp4" controls width="640"></video>
+
+[`composite.mp4`](assets/examples/composite.mp4)
+
+**LTX single-pass baseline** — text-to-video generation in one shot, for comparison against the keyframe-guided approach.
+
+<video src="assets/examples/ltx_single_pass.mp4" controls width="640"></video>
+
+[`ltx_single_pass.mp4`](assets/examples/ltx_single_pass.mp4)
+
+## Modes
+
+- **Mode A — Keyframe interpolation** *(working)*. Animator draws keyframes at variable spacing, AI fills the in-betweens.
+- **Mode B — AI rotoscope** *(planned)*. Reference video → style-transferred keyframes (ControlNet + LoRA) → same interpolation pipeline as Mode A.
+
+Both modes converge on the same downstream interpolation step.
 
 ## Quick Start
 
-### Requirements
-
-- Python 3.10+
-- CUDA GPU (20GB+ VRAM recommended, 8GB works with fp16)
-- ffmpeg
-
-### Setup
-
 ```bash
-# Clone with submodules
 git clone --recurse-submodules https://github.com/not-matty/animation.git
 cd animation
-
-# Create environment
-python -m venv .venv
-source .venv/bin/activate
 uv pip install -e ".[dev]"
-
-# Download model weights (~10GB)
-python scripts/download_models.py
+python scripts/download_models.py      # ~10GB of weights
 ```
 
-### Run Interpolation
+Interpolate a directory of keyframes (sorted lexicographically):
 
 ```bash
-# Basic usage — provide keyframes directory and output path
-python scripts/interpolate.py keyframes=data/test_keyframes/ output=output/result.mp4
-
-# Override inference settings
-python scripts/interpolate.py keyframes=data/test_keyframes/ output=output/result.mp4 ddim_steps=25 half_precision=false
-
-# Save individual frames alongside video
-python scripts/interpolate.py keyframes=data/test_keyframes/ output=output/result.mp4 save_frames=true
-
-# Output as frame sequence instead of video
-python scripts/interpolate.py keyframes=data/test_keyframes/ output=output/frames/
+python scripts/interpolate.py keyframes=path/to/keyframes/ output=out.mp4
 ```
 
-Place keyframe images (PNG/JPG) in a directory, named in the order you want them interpolated (sorted lexicographically). The pipeline generates 14 intermediate frames between each adjacent pair at 320x512 resolution.
-
-## Architecture
-
-```
-manimate/
-├── interpolation/     # Frame interpolation engine
-│   ├── base.py        # BaseInterpolator interface
-│   ├── mog.py         # MoG-VFI wrapper (diffusion-based, anime checkpoint)
-│   └── pipeline.py    # Multi-keyframe chaining
-├── video/             # Video I/O (frame loading, ffmpeg assembly)
-├── style_transfer/    # ControlNet + LoRA style transfer (planned)
-├── lora/              # LoRA training pipeline (planned)
-├── pose/              # Pose estimation for Mode B (planned)
-├── cleanup/           # Correction tools (planned)
-└── ui/                # Desktop UI (planned)
-```
-
-### Interpolation Pipeline
-
-```
-Keyframes:  K1 ──────────── K2 ──────────── K3
-                    │                │
-                MoG-VFI          MoG-VFI
-                    │                │
-Output:     K1 i i i i ... i K2 i i i i ... i K3
-            (14 frames/pair → 24fps animation)
-```
-
-MoG-VFI uses optical flow guidance + latent video diffusion to generate temporally coherent frames. The anime checkpoint is tuned for illustrated/animated content.
-
-## Configuration
-
-Config is managed via [Hydra](https://hydra.cc). Base config at `configs/interpolation/default.yaml`:
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `keyframes` | required | Path to keyframe image directory |
-| `output` | required | Output path (.mp4 for video, directory for frames) |
-| `ddim_steps` | 50 | Diffusion sampling steps (lower = faster, less quality) |
-| `half_precision` | true | fp16 inference (fits 8GB GPUs) |
-| `target_fps` | 24 | Output video frame rate |
-| `guidance_scale` | 7.5 | Classifier-free guidance scale |
-| `seed` | 42 | Random seed for reproducibility |
-| `prompt` | "" | Optional text description of the scene |
-
-Override any parameter via CLI: `python scripts/interpolate.py ddim_steps=25 seed=123`
-
-## Cloud GPU (RunPod)
-
-For larger runs or full-precision inference:
+Override inference settings via Hydra syntax:
 
 ```bash
-# On RunPod pod (A6000/A100 recommended)
-bash scripts/setup_runpod.sh
-python scripts/download_models.py
-python scripts/interpolate.py keyframes=... output=... half_precision=false
+python scripts/interpolate.py keyframes=... output=... ddim_steps=25 half_precision=false
 ```
+
+Base config: [`configs/interpolation/default.yaml`](configs/interpolation/default.yaml).
+
+## Requirements
+
+- Python 3.10+
+- CUDA GPU (8GB VRAM with fp16; 20GB+ for full precision)
+- ffmpeg
 
 ## Development
 
 ```bash
-# Lint + format
 ruff check . && ruff format --check .
-
-# Type check
 pyright
-
-# Tests
 python -m pytest tests/ -x
 ```
+
+See [`CLAUDE.md`](CLAUDE.md) for project conventions and [`RESEARCH-BRIEF.md`](RESEARCH-BRIEF.md) for the full design.
 
 ## License
 

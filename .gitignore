@@ -29,6 +29,13 @@ vendor/MoG-VFI/results/
 # Hydra
 outputs/
 
+# Claude Code runtime
+.claude/scheduled_tasks.lock
+.claude/*.lock
+
+# Local scratch / external templates
+claude-code-template/
+
 # OS
 .DS_Store
 
